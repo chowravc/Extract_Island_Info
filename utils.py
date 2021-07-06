@@ -1,5 +1,8 @@
 ## Importing useful packages
 import numpy as np
+import matplotlib.pyplot as plt
+import matplotlib.patches as ps
+from PIL import Image
 
 
 ## Calculate radius of the bubble from the position of the center, and a list of points at the edge of the bubble
@@ -79,17 +82,17 @@ def island_radius(globe_center, globe_radius, bb_center, bb_dims):
 	# Exceptions
 	if rad_den == 0 or rad_num*rad_den < 0:
 		print('Invalid bounding box.')
-		return 0
+		return 0, phi, dr
 	else:
 		# Calculating radius
 		radius = np.sqrt(rad_num/rad_den)
 
-	# Outputting predicted radius
-	return radius
+	# Outputting predicted radius and phi
+	return radius, phi, dr
 
 
 ## Label all island radii and sizes with a YOLOv5 label file
-def island_sizes(label_file, dims, bubble_center, bubble_radius, display=False):
+def island_sizes(label_file, dims, bubble_center, bubble_radius, display=False, showIsland=False):
 
 	# Generate ID for output file
 	output_file = 'output/' + label_file.split('/')[-2] + '/' + label_file.split('/')[-1]
@@ -97,21 +100,80 @@ def island_sizes(label_file, dims, bubble_center, bubble_radius, display=False):
 	# Load labels from input file
 	labelMat = np.loadtxt(label_file)
 
+	# Image displaying island path
+	imagePath = label_file.replace('labels', 'frames').replace('txt', 'tif')
+
+	# Reading image
+	image = Image.open(imagePath)
+
+	# Clear plots
+	plt.clf()
+
+	# First subplot
+	plt.subplot(1, 2, 1)
+
+	# Displaying original image
+	plt.imshow(image)
+	plt.title('Original Image')
+
+	# Second subplot
+	plt.subplot(1, 2, 2)
+	plt.title('Image with overlaid island')
+	plt.imshow(image)
+	ax = plt.gca()
+
 	# For every bounding box in the file
 	for i, det in enumerate(labelMat):
 
 		# Get the absolute pixelwise 
 		xc, yc, w, h = label_to_bb(det, dims)
 
-		# Predict the radius of the island
-		calc_radius = island_radius(bubble_center, bubble_radius, (xc, yc), (w, h))
+		# Predict the radius of the island, get angle and distance from center
+		calc_radius, calc_phi, calc_dist = island_radius(bubble_center, bubble_radius, (xc, yc), (w, h))
 
 		# Calculate area from predicted area
 		calc_area = np.pi*calc_radius**2
 
 		# Display results
 		if display:
-			print("\nIsland " + str(i) + '/' + str(len(labelMat)))
+			print("\nIsland " + str(i+1) + '/' + str(len(labelMat)))
 			print('Predicted island center: (' + str(xc) + ', ' + str(yc) + ')')
 			print("Predicted island radius: " + str(calc_radius)[:5] + " px")
 			print("Predicted island area: " + str(calc_area)[:7] + " sq. px")
+
+		island_center = (xc, yc)
+		ell_width = 2*calc_radius*np.cos(np.arcsin(calc_dist/bubble_radius))
+		ell_height = 2*calc_radius
+
+		ax.add_patch(ps.Ellipse(island_center,
+			width=ell_width,
+			height=ell_height,
+			angle=calc_phi*(180/np.pi), 
+			edgecolor='red',
+			facecolor='none',
+			linewidth=1))
+
+	if show_island:
+		plt.show()
+
+
+## Running this if the script is run directly
+if __name__ == '__main__':
+
+	# Testing file
+	file = 'input/309_tm_25C_top_need_35C/labels/0020.txt'
+
+	# Dimensions of the image
+	dims = (1024, 1024)
+
+	# Center of the bubble on image
+	bubble_center = [495, 618]
+
+	# List of points at the edge of the bubble
+	bubble_edges = [[495, 141], [21, 618], [947, 618]]
+
+	# Predict the radius of the bubble
+	radius = get_bubble_radius(bubble_center, bubble_edges)
+
+	# Calculate predictions for radii of each island
+	island_sizes(file, dims, bubble_center, radius, display=True, showIsland=True)

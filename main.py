@@ -2,12 +2,13 @@
 from PIL import Image, ImageDraw
 import matplotlib.pyplot as plt
 import numpy as np
+import glob
 
 ## Importing useful scripts
 from utils import *
 
 ## Main function of the file
-def main(directory):
+def main(directory, display=False):
 
 	# Reading input label files
 	filesList = glob.glob(directory + 'labels/*.txt')
@@ -30,27 +31,10 @@ def main(directory):
 		# Doing every file individually
 		for i, labelFile in enumerate(filesList):
 
-			print("\nDoing " + labelFile + ', ' + str(i) + '/' + str(len(filesList)))
+			print("\nDoing " + labelFile + ', ' + str(i+1) + '/' + str(len(filesList)))
 
 			# Calculate predictions for radii of each island
-			island_sizes(labelFile, dims, bubble_center, radius, display=True)
-
-			# # Plotting
-			# x0, y0 = xc - w//2, yc - h//2
-			# x1, y1 = xc + w//2, yc + h//2
-
-			# bounds = (x0, y0, x1, y1)
-
-			# imBB = ImageDraw.Draw(image)
-			# # imBB.ellipse(bounds, fill=None, outline ="blue")
-			# imBB.rectangle(bounds, fill=None, outline="red")
-
-			# image.show()
-
-			# image = Image.open(imageFile)
-
-			# imCrop = image.crop(bounds)
-			# imCrop.show()
+			island_sizes(labelFile, dims, bubble_center, radius, display=display)
 
 
 
@@ -62,4 +46,4 @@ if __name__ == '__main__':
 	# inDir = 'input/309_tm_26C_bot_need_40C/'
 
 	# Run main function
-	main(inDir)
+	main(inDir, False)
