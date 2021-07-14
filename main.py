@@ -230,8 +230,8 @@ def plot_velo(inDir, csv_file, frame=1000, delta=5):
 				toPlot['y'].append(int(float(l1[3])))
 
 				# Store relative motion
-				toPlot['dx'].append(int(float(l2[2])) - int(float(l1[2])))
-				toPlot['dy'].append(int(float(l2[3])) - int(float(l1[3])))
+				toPlot['dx'].append(-int(float(l1[2])) + int(float(l2[2])))
+				toPlot['dy'].append(int(float(l1[3])) - int(float(l2[3])))
 
 	# Plot the frame image
 	plt.imshow(im)
@@ -250,8 +250,69 @@ def plot_velo(inDir, csv_file, frame=1000, delta=5):
 
 
 
-## Plot diameters changing over time
-def plot_diam(csv_file, minLen=0, diamRange=[0, 100], plotSingle=True):
+## Plot all islands from linked on frame
+def plot_frame(csv_file, inDir, frame=0):
+
+	# Framepath
+	framePath = inDir + 'frames/' + str(frame).zfill(4) + '.tif'
+
+	# Open linked csv file
+	with open(csv_file, 'r') as data:
+
+		# Lists to store values
+		islands, xs, ys = [], [], []
+
+		# Go through it linewise
+		for i, line in enumerate(csv.reader(data)):
+
+			# Header looks like this
+			# ['', 'Unnamed: 0', 'x', 'y', 'mass', 'size', 'ecc', 'signal', 'raw_mass', 'ep', 'frame', 'particle']
+		
+			# Display current line
+			if i%10000 == 0:
+
+				print('Currently on line: ' + str(i))
+
+			# The first line contains the headers (keys)
+			if i != 0:
+
+				# This is which frame it is
+				cF = line[-2]
+
+				# If it is from the correct frame
+				if cF == str(frame):
+
+					# Get the island
+					islands.append(line[-1])
+
+					# Get the coordinates
+					xs.append(float(line[2]))
+					ys.append(float(line[3]))
+
+	print('Found ' + str(len(xs)) + ' nontouching islands.')
+
+	# Read image
+	im = Image.open(framePath)
+
+	# Display image in the background
+	plt.imshow(im)
+
+	# For every island in the frame
+	for i in range(len(islands)):
+
+		# Display the label associated with particle
+		plt.text(x=xs[i]+0.1, y=ys[i]+0.1, s=islands[i], fontdict=dict(color='red', size=8))
+
+	# Plot dots on each particle
+	plt.scatter(xs, ys, color='r', s=2)
+
+	# Show plot
+	plt.show()
+
+
+
+## Plot diameters changing over latitude
+def plot_diam(csv_file, iPlot, degree):
 
 	# Center of the bubble on image
 	bubble_center = [495, 618]
@@ -265,11 +326,11 @@ def plot_diam(csv_file, minLen=0, diamRange=[0, 100], plotSingle=True):
 	# Output plot name
 	plot_path = csv_file.replace('csv', 'tif').replace('linked', 'diameters')
 
-	# Read linked csv file
-	linked = pd.read_csv(csv_file)
-
 	# Dictionary to store what has to be displayed
-	dictPlot = {}
+	dictPlot = {
+		'lats': [],
+		'diams': []
+	}
 
 	# Open linked csv file
 	with open(csv_file, 'r') as data:
@@ -284,100 +345,86 @@ def plot_diam(csv_file, minLen=0, diamRange=[0, 100], plotSingle=True):
 			# The first line contains the headers (keys)
 			if i != 0:
 
-				# This is which particle it is
-				particle = line[-1]
+				# This is which island it is
+				island = int(line[-1])
 
-				# Add particle key to dictionary if it does not exist
-				if particle not in dictPlot.keys():
+				# If the current island needs to be plotted
+				if island in iPlot:
 
-					# Adding empty list
-					dictPlot[particle] = []
+					coords = spherical(bubble_center, radius, (float(line[2]), float(line[3])))
+				
+					# Current latitude (this is the x-coord)
+					cLat = (-1)*coords[1]*180/np.pi + 90
 
-				coords = spherical(bubble_center, radius, (float(line[2]), float(line[3])))
-			
-				# Current latitude (this is the x-coord)
-				cLat = coords[1]*180/np.pi
+					# Diameter
+					cD = 2*np.sqrt((float(line[4])/np.pi))
 
-				# Diameter
-				cD = 2*np.sqrt((float(line[4])/np.pi))
+					# Add them to the dictionary
+					dictPlot['lats'].append(cLat)
+					dictPlot['diams'].append(cD)
 
-				# Only if the Diameter is in the range we want to view
-				if cD >= diamRange[0] and cD <= diamRange[1]:
+	# Display how many positions are there in total
+	print('Number of points discovered: ' + str(len(dictPlot['lats'])))
 
-					# Add the coordinates to the dictionary
-					dictPlot[particle].append([cLat, cD])
+	# First point
+	fP = [dictPlot['lats'][0], dictPlot['diams'][0]]
 
-	# Clear plots
+	# Last point
+	lP = [dictPlot['lats'][-1], dictPlot['diams'][-1]]
+
+	# Perform a fit
+	fitCoeffs = np.polyfit(dictPlot['lats'], dictPlot['diams'], degree)
+
+	# Function to run fit
+	fit = np.poly1d(fitCoeffs)
+
+	print('Degree of poly fit: ' + str(degree))
+
+	# Create a numpy list of latitudes
+	fitLats = np.linspace(fP[0], lP[0], num=50)
+
+	# Find corresponding diameters according to fit
+	fitDiams = fit(fitLats)
+
+	# Clear plot
 	plt.clf()
 
-	# Store keys that must be removed
-	to_remove = []
+	# Plot the points
+	plt.scatter(dictPlot['lats'], dictPlot['diams'], s=2, color='b')
 
-	# Display how many islands are there in total
+	# Plot the fit
+	plt.plot(fitLats, fitDiams, color='k')
 
+	# Plot the rough start and end points
+	plt.scatter(fP[0], fP[1], s=40, color='g')
+	plt.scatter(lP[0], fP[1], s=40, color='r')
 
-	# Plot every island
-	for key in dictPlot.keys():
-
-		# Extract the island information from dictionary
-		currentPart = np.asarray(dictPlot[key])
-
-		# Transpose it
-		currentPart = currentPart.T
-
-		# If it is not long enough in frames, remove it
-		if not (len(currentPart) > 0 and len(currentPart[0]) > minLen):
-
-			# Add key to remove
-			to_remove.append(key)
-
-		# If you want to plot multiple islands
-		elif not plotSingle:
-
-			# Plot island
-			plt.plot(currentPart[0], currentPart[1])
-
-	# Remove keys from dict
-	for key in to_remove:
-
-		# Remove from dictionary
-		dictPlot.pop(key)
-
-	# If you wanted to plot a single island
-	if plotSingle:
-
-		# Keep running again and again
-		while True:
-
-			# Display the keys
-			print()
-			print(dictPlot.keys())
-
-			# Get input of what island to view
-			currentKey = input("Enter the island you want to view ('exit' to leave): ")
-
-			# If user wants to exit, do so
-			if currentKey == 'exit':
-				return
-
-			# Display requested island
-			currentPart = np.asarray(dictPlot[currentKey])
-			currentPart = currentPart.T
-
-			# Clear plot
-			plt.clf()
-			plt.plot(currentPart[0], currentPart[1])
-
-			plt.title('Island diameter vs latitude')
-			plt.xlabel('Lat (degrees)')
-			plt.ylabel('Diameter (pixels)')
-			# Show plot
-			plt.show()
-
-	plt.title('Island diameter vs latitude')
-	plt.xlabel('Lat (degrees?)')
+	plt.title('Island diameter vs Latitude (recorded). Island: ' + repr(iPlot))
+	plt.xlabel('Lat (degrees, equator at 0)')
 	plt.ylabel('Diameter (pixels)')
+
 	# Show cumulative plot
+	plt.savefig('temp_points.tif', dpi=300)
+	plt.show()
+
+	# Create new numpy array of latitudes
+	fitLats = np.linspace(fP[0], lP[0], num=10)
+
+	# Find corresponding diameters according to fir
+	fitDiams = fit(fitLats)
+
+	# Clear plots again
+	plt.clf()
+
+	# Plot the fit
+	plt.scatter(fitLats, fitDiams, color='k', s=40)
+
+	plt.title('Island diameter vs Latitude (fit points). Island: ' + repr(iPlot))
+	plt.xlabel('Lat (degrees, equator at 0)')
+	plt.ylabel('Diameter (pixels)')
+
+	# Show cumulative plot
+	plt.savefig('temp_fit.tif', dpi=300)
 	plt.show()
 
 
@@ -434,6 +481,9 @@ if __name__ == '__main__':
 	# Input directory
 	# inDir = 'input/309_tm_25C_top_need_35C/'
 	# inDir = 'input/309_tm_26C_bot_need_40C/'
+	# inDir = 'input/309_tm_26C_bot_need_35C/'
+	# inDir = 'input/309_tm_26C_bot_need_45C/'
+	# inDir = 'input/309_tm_28C_bot_need_50C/'
 
 	# Run main function
 	# main(inDir, False, False)
@@ -442,6 +492,9 @@ if __name__ == '__main__':
 	# Remove touching from output
 	# touchDir = 'output/309_tm_25C_top_need_35C/'
 	# touchDir = 'output/309_tm_26C_bot_need_40C/'
+	# touchDir = 'output/309_tm_26C_bot_need_35C/'
+	# touchDir = 'output/309_tm_26C_bot_need_45C/'
+	# touchDir = 'output/309_tm_28C_bot_need_50C/'
 
 	# Tolerance for touching
 	tol = 3
@@ -455,11 +508,14 @@ if __name__ == '__main__':
 	# Directory
 	# outdir = 'output/309_tm_25C_top_need_35C/'
 	# outdir = 'output/309_tm_26C_bot_need_40C/'
+	# outdir = 'output/309_tm_26C_bot_need_35C/'
+	# outdir = 'output/309_tm_26C_bot_need_45C/'
+	# outdir = 'output/309_tm_28C_bot_need_50C/'
 
 	absolute = False
 
 	# Run function to make dataframe
-	# to_pandas_df(outdir, absolute, cutoff=1233)
+	# to_pandas_df(outdir, absolute, cutoff=9999)
 
 	####
 	# Linking islands
@@ -467,6 +523,9 @@ if __name__ == '__main__':
 	# Path to pandas dataframe
 	# pathPD = 'output/309_tm_25C_top_need_35C/dataframe.csv'
 	# pathPD = 'output/309_tm_26C_bot_need_40C/dataframe.csv'
+	# pathPD = 'output/309_tm_26C_bot_need_35C/dataframe.csv'
+	# pathPD = 'output/309_tm_26C_bot_need_45C/dataframe.csv'
+	# pathPD = 'output/309_tm_28C_bot_need_50C/dataframe.csv'
 
 	# Run functions to link islands
 	dis = 5
@@ -480,6 +539,9 @@ if __name__ == '__main__':
 	# Path to linked pandas dataframe
 	# pathPD_linked = 'output/309_tm_25C_top_need_35C/linked.csv'
 	# pathPD_linked = 'output/309_tm_26C_bot_need_40C/linked.csv'
+	# pathPD_linked = 'output/309_tm_26C_bot_need_35C/linked.csv'
+	# pathPD_linked = 'output/309_tm_26C_bot_need_45C/linked.csv'
+	# pathPD_linked = 'output/309_tm_28C_bot_need_50C/linked.csv'
 
 	# Call function
 	# disp_trajectories(pathPD_linked)
@@ -490,10 +552,16 @@ if __name__ == '__main__':
 	# Path to input directory
 	# inDir = 'input/309_tm_25C_top_need_35C/'
 	# inDir = 'input/309_tm_26C_bot_need_40C/'
+	# inDir = 'input/309_tm_26C_bot_need_35C/'
+	# inDir = 'input/309_tm_26C_bot_need_45C/'
+	# inDir = 'input/309_tm_28C_bot_need_50C/'
 
 	# Path to linked pandas dataframe
 	# pathPD_linked = 'output/309_tm_25C_top_need_35C/linked.csv'
 	# pathPD_linked = 'output/309_tm_26C_bot_need_40C/linked.csv'
+	# pathPD_linked = 'output/309_tm_26C_bot_need_35C/linked.csv'
+	# pathPD_linked = 'output/309_tm_26C_bot_need_45C/linked.csv'
+	# pathPD_linked = 'output/309_tm_28C_bot_need_50C/linked.csv'
 
 	frame = 100
 	delta = 50
@@ -502,11 +570,73 @@ if __name__ == '__main__':
 	# plot_velo(inDir, pathPD_linked, frame, delta)
 
 	####
+	# Displaying frame with labelled islands
+
+	# Linked csv file
+	# pathPD_linked = 'output/309_tm_25C_top_need_35C/linked.csv'
+	# pathPD_linked = 'output/309_tm_26C_bot_need_40C/linked.csv'
+	# pathPD_linked = 'output/309_tm_26C_bot_need_35C/linked.csv'
+	# pathPD_linked = 'output/309_tm_26C_bot_need_45C/linked.csv'
+	# pathPD_linked = 'output/309_tm_28C_bot_need_50C/linked.csv'
+
+	# Path to input directory
+	# inDir = 'input/309_tm_25C_top_need_35C/'
+	# inDir = 'input/309_tm_26C_bot_need_40C/'
+	# inDir = 'input/309_tm_26C_bot_need_35C/'
+	# inDir = 'input/309_tm_26C_bot_need_45C/'
+	# inDir = 'input/309_tm_28C_bot_need_50C/'
+
+	# Frame to display
+	# f = int(input('Frame: '))
+
+	# Call function
+	# plot_frame(pathPD_linked, inDir, frame=f)
+
+	####
 	# Plotting change in diameter
 
 	# Path to linked pandas dataframe
-	pathPD_linked = 'output/309_tm_25C_top_need_35C/linked.csv'
+	# pathPD_linked = 'output/309_tm_25C_top_need_35C/linked.csv'
 	# pathPD_linked = 'output/309_tm_26C_bot_need_40C/linked.csv'
+	# pathPD_linked = 'output/309_tm_26C_bot_need_35C/linked.csv'
+	# pathPD_linked = 'output/309_tm_26C_bot_need_45C/linked.csv'
+	# pathPD_linked = 'output/309_tm_28C_bot_need_50C/linked.csv'
+
+	# Island(s) to plot diameter vs lat
+	islands = [410, 1218]
+
+	# Degree of polynomial to fit
+	degree = 3
 
 	# Call function
-	plot_diam(pathPD_linked, minLen=100, diamRange=[0, 500], plotSingle=True)
+	# plot_diam(pathPD_linked, islands, degree)
+
+
+	#### List of islands to plot Diameter vs Latitude
+	#
+	# Note: Within the list of islands, everything inside ' ' is a single island which may have been misrecognized as two.
+	#		Islands are labelled top to bottom, left to right.
+	#
+	# 1. island siza vs _latitude 309_tm_26C_bot_need_35C.png
+	#	 Frame: 0443
+	#	 Number of islands: 1
+	#	 bottom
+	#	 Islands in linked csv: '661, 2575, 2651, 2733'
+	#
+	# 2. island siza vs _latitude 309_tm_26C_bot_need_40C.png
+	#	 Frame: 0341
+	#	 Number of islands: 2
+	#	 bottom
+	#	 Islands in linked csv: '404, 1719', '543'
+	#
+	# 3. island siza vs _latitude309_tm_25C_need35C.png
+	#	 Frame: 1360
+	#	 Number of islands: 10
+	#	 bottom
+	#	 Islands in linked csv: '267, 434, 617, 1481', '305, 1315', '307, 1162', '292', '36', '25, 888', '471, 1043', '42', '44', '339, 1045, 1627'
+	#
+	# 4. island siza vs _latitude309_tm_26C_bot_need_45C.png
+	#	 Frame: 0381
+	#	 Number of islands: 2
+	#	 bottom
+	#	 Islands in linked csv: '365, 1085', '410, 1218'

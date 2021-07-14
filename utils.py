@@ -5,6 +5,7 @@ import matplotlib.patches as ps
 from PIL import Image
 
 
+
 ## Remove touching islands from label file
 def remove_touching_ff(label_file, globe_radius, tolerance=3):
 
